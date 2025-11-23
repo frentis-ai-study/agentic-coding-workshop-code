@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  chat-app:
+    build:
+      context: ../..  # 루트 디렉토리를 context로
+      dockerfile: 04-testing-deployment/03-docker-deployment/Dockerfile.chat
+    ports:
+      - "8601:8501"  # 호스트:8601 → 컨테이너:8501 (포트 충돌 방지)
+    environment:
+      - OPENAI_API_BASE=${OPENAI_API_BASE:-http://host.docker.internal:11434/v1}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-ollama}
+      - MODEL_NAME=${MODEL_NAME:-qwen3-vl:4b}
+      - DATABASE_URL=sqlite:////data/chat_history.db
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+    volumes:
+      - chat-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]  # 컨테이너 내부 포트
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  chat-data:
+    driver: local

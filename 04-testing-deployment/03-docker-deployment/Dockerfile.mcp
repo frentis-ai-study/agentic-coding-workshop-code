@@ -1,0 +1,45 @@
+# MCP 서버 Dockerfile
+# Part 3 MCP 서버들을 컨테이너화합니다.
+
+FROM python:3.12-slim
+
+LABEL maintainer="Agentic Workshop"
+LABEL description="FastMCP Server Container"
+
+# 작업 디렉토리 설정
+WORKDIR /app
+
+# 시스템 패키지 업데이트 및 필요한 도구 설치
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# uv 설치 (최신 Python 패키지 관리자)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
+
+# 프로젝트 파일 복사
+COPY pyproject.toml ./
+COPY 03-mcp-tools/ ./03-mcp-tools/
+
+# 의존성 설치
+RUN uv sync --extra part3-mcp
+
+# MCP 서버 엔트리포인트 스크립트 복사
+COPY 04-testing-deployment/03-docker-deployment/entrypoint-mcp.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# 환경변수 설정
+ENV PYTHONUNBUFFERED=1
+ENV MCP_SERVER_TYPE=tools
+
+# 헬스체크
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# 포트 노출 (HTTP transport)
+EXPOSE 8000
+
+# 엔트리포인트 실행
+ENTRYPOINT ["/entrypoint.sh"]

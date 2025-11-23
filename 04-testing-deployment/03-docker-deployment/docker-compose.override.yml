@@ -1,0 +1,41 @@
+# docker-compose.override.yml
+# 개발 환경 전용 설정
+# 이 파일은 docker-compose.yml과 자동으로 병합됩니다
+# 프로덕션 배포 시에는 이 파일을 제외하세요
+
+version: '3.8'
+
+services:
+  # mcp-server는 현재 docker-compose.yml에 없으므로 주석 처리
+  # mcp-server:
+  #   volumes:
+  #     - ../../03-mcp-tools:/app/mcp-tools:ro
+  #   environment:
+  #     - DEBUG=true
+  #     - LOG_LEVEL=DEBUG
+  #   ports:
+  #     - "8000:8000"
+
+  chat-app:
+    # 개발 모드: 코드 변경 시 자동 재시작
+    volumes:
+      # 소스 코드 마운트 (hot reload)
+      - ../02-mcp-chat-client:/app/chat-client:ro
+    environment:
+      # Streamlit 개발 모드
+      - STREAMLIT_SERVER_RUN_ON_SAVE=true
+      - LOG_LEVEL=DEBUG
+    # 포트 노출
+    ports:
+      - "8501:8501"
+    # 개발 시 편의를 위해 재시작 정책 변경
+    restart: "no"
+
+# 개발 환경 추가 서비스 (선택사항)
+# 예: 데이터베이스 관리 도구
+#  adminer:
+#    image: adminer
+#    ports:
+#      - "8080:8080"
+#    networks:
+#      - mcp-network
