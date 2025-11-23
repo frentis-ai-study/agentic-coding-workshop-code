@@ -8,176 +8,56 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-keywords = ["agentic-ai", "mcp", "ai-dlc", "fastmcp", "agent-to-agent"]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Topic :: Software Development :: Libraries",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-]
 
-# 필수 의존성 (워크샵에서 사용하는 모든 라이브러리)
 dependencies = [
     # 기본
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
-    # Part 3: MCP 툴 구현
-    "fastmcp>=0.2.0",
-    "httpx>=0.27.0",
     "python-dotenv>=1.0.0",
-    # Part 5: A2A 에이전트
-    "mem0ai>=0.1.30",  # Mem0 Cloud 지원
+    "httpx>=0.27.0",
+    # MCP 서버
+    "fastmcp>=0.2.0",
+    # Agent-to-Agent
+    "mem0ai>=0.1.30",
     "aiosqlite>=0.20.0",
     "fastapi>=0.115.0",
     "uvicorn>=0.34.0",
-    "openai>=1.58.0",  # Ollama 호환 클라이언트
-    "streamlit>=1.40.0",  # 웹 UI
-    # 개발 도구
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-    "pytest-cov>=4.1.0",
-    "ruff>=0.8.0",
-    "mypy>=1.13.0",
-]
-
-# 선택적 의존성 (필요시에만)
-[project.optional-dependencies]
-# Part 4: 테스트 및 배포
-part4-testing = [
+    "openai>=1.58.0",
+    # UI 및 클라이언트
+    "streamlit>=1.40.0",
     "langgraph>=0.6.0",
     "langchain-mcp-adapters>=0.1.13",
     "langchain-openai>=0.3.0",
-    "streamlit>=1.40.0",
+    # 테스팅
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
     "hypothesis>=6.100.0",
-    # Metamorphic Testing (선택사항)
-    "sentence-transformers>=2.2.0",
-]
-
-# Part 4: 배포 도구 (선택사항)
-deploy = [
-    "docker>=7.0.0",
-]
-
-# 추가 개발 도구
-dev-extra = [
-    "pre-commit>=3.6.0",
+    # 코드 품질
+    "ruff>=0.8.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/frentis-ai-study/agentic-coding-workshop"
-Documentation = "https://github.com/frentis-ai-study/agentic-coding-workshop#readme"
-Repository = "https://github.com/frentis-ai-study/agentic-coding-workshop.git"
-Issues = "https://github.com/frentis-ai-study/agentic-coding-workshop/issues"
+Homepage = "https://github.com/frentis-ai-study/agentic-coding-workshop-code"
+Repository = "https://github.com/frentis-ai-study/agentic-coding-workshop-code.git"
 
-# Build system configuration
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-# Hatch configuration
 [tool.hatch.build.targets.wheel]
 packages = ["agentic_coding_workshop"]
 
-# Ruff configuration (린터 및 포매터)
+# Ruff - 기본 설정만
 [tool.ruff]
-target-version = "py312"
 line-length = 100
+target-version = "py312"
 
 [tool.ruff.lint]
-select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "B",   # flake8-bugbear
-    "C4",  # flake8-comprehensions
-    "UP",  # pyupgrade
-    "ARG", # flake8-unused-arguments
-    "SIM", # flake8-simplify
-]
-ignore = [
-    "E501",  # line too long (handled by formatter)
-    "B008",  # do not perform function calls in argument defaults
-    "B904",  # raise from for exception chaining (교육용 예제에서는 간단함 우선)
-    "C901",  # too complex
-]
+select = ["E", "F", "I"]
+ignore = ["E501"]
 
-[tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]  # unused imports in __init__.py
-"tests/*" = ["ARG001", "ARG002", "E402"]  # unused function arguments, module imports after sys.path
-"*/tests/*" = ["ARG001", "ARG002", "E402"]  # unused function arguments, module imports after sys.path in tests
-"test_*.py" = ["E402", "SIM117"]  # module imports after sys.path, nested with statements
-
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-skip-magic-trailing-comma = false
-line-ending = "auto"
-
-# Mypy configuration (타입 체커)
-[tool.mypy]
-python_version = "3.12"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-strict_equality = true
-
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false
-
-# Pytest configuration
+# Pytest - 간소화된 설정
 [tool.pytest.ini_options]
 testpaths = ["03-mcp-tools", "04-testing-deployment", "05-a2a-agents"]
-python_files = ["test_*.py", "*_test.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
 asyncio_mode = "auto"
-addopts = [
-    "--strict-markers",
-    "--strict-config",
-    "--showlocals",
-    "-ra",
-]
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
-]
-
-# Coverage configuration
-[tool.coverage.run]
-source = ["03-mcp-tools", "04-testing-deployment", "05-a2a-agents"]
-omit = [
-    "*/tests/*",
-    "*/test_*.py",
-    "*/__init__.py",
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-    "if TYPE_CHECKING:",
-    "class .*\\bProtocol\\):",
-    "@(abc\\.)?abstractmethod",
-]
-precision = 2
-show_missing = true
-skip_covered = false
-
-[tool.coverage.html]
-directory = "htmlcov"
