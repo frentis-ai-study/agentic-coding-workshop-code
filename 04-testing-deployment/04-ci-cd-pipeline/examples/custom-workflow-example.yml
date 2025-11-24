@@ -1,0 +1,343 @@
+# 커스텀 GitHub Actions 워크플로우 예제
+#
+# 이 파일은 다양한 시나리오에 대한 워크플로우 예제를 제공합니다.
+# .github/workflows/ 디렉토리에 복사하여 사용할 수 있습니다.
+
+# ============================================================
+# 예제 1: 전체 CI/CD 파이프라인 (All-in-One)
+# ============================================================
+
+name: Full CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  # 매주 월요일 오전 9시 (KST) 정기 실행
+  schedule:
+    - cron: '0 0 * * 1'  # UTC 기준 (KST - 9시간)
+  # 수동 트리거
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: 'Run tests'
+        required: true
+        default: true
+        type: boolean
+      deploy:
+        description: 'Deploy to environment'
+        required: false
+        type: choice
+        options:
+          - none
+          - staging
+          - production
+
+env:
+  PYTHON_VERSION: '3.12'
+  UV_VERSION: '0.5.0'
+
+jobs:
+  # ============================================================
+  # Job 1: 코드 품질 검사
+  # ============================================================
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run ruff check
+        run: uv run ruff check --output-format=github .
+
+      - name: Run ruff format check
+        run: uv run ruff format --check .
+
+      - name: Run mypy
+        run: uv run mypy . --ignore-missing-imports
+        continue-on-error: true  # 타입 체크 실패 시에도 계속 진행
+
+  # ============================================================
+  # Job 2: 테스트 (매트릭스로 여러 Python 버전)
+  # ============================================================
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    needs: code-quality
+
+    strategy:
+      fail-fast: false  # 한 버전 실패해도 다른 버전 계속 실행
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ['3.12', '3.13']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ matrix.python-version }}-${{ hashFiles('**/uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-${{ matrix.python-version }}-
+            ${{ runner.os }}-uv-
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run tests with coverage
+        run: uv run pytest --cov=. --cov-report=xml --cov-report=html -v
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: python-${{ matrix.python-version }}
+        continue-on-error: true
+
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report-py${{ matrix.python-version }}
+          path: htmlcov/
+
+  # ============================================================
+  # Job 3: Docker 이미지 빌드 및 푸시
+  # ============================================================
+  docker-build:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: myorg/agentic-coding-workshop
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - name: Build and push MCP server image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./04-testing-deployment/03-docker-deployment
+          file: ./04-testing-deployment/03-docker-deployment/Dockerfile.mcp
+          push: true
+          tags: myorg/mcp-server:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push chat app image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./04-testing-deployment/03-docker-deployment
+          file: ./04-testing-deployment/03-docker-deployment/Dockerfile.chat
+          push: true
+          tags: myorg/chat-app:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================================
+  # Job 4: 배포 (조건부)
+  # ============================================================
+  deploy:
+    name: Deploy to ${{ github.event.inputs.deploy || 'none' }}
+    runs-on: ubuntu-latest
+    needs: docker-build
+    if: github.event.inputs.deploy != 'none'
+
+    environment:
+      name: ${{ github.event.inputs.deploy }}
+      url: https://${{ github.event.inputs.deploy }}.example.com
+
+    steps:
+      - name: Deploy to environment
+        run: |
+          echo "Deploying to ${{ github.event.inputs.deploy }}"
+          # 실제 배포 명령 (예: kubectl, terraform 등)
+
+  # ============================================================
+  # Job 5: 성능 테스트 (선택적)
+  # ============================================================
+  performance:
+    name: Performance Testing
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'schedule' || github.event.inputs.run_tests == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run performance tests
+        run: |
+          echo "Running performance benchmarks..."
+          # 실제 벤치마크 도구 실행
+
+  # ============================================================
+  # Job 6: 보안 스캔
+  # ============================================================
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+# ============================================================
+# 예제 2: PR에 대한 자동 코멘트
+# ============================================================
+
+---
+name: PR Comment
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Run tests and generate report
+        id: test_report
+        run: |
+          uv sync
+          uv run pytest --tb=short > test_results.txt 2>&1 || true
+          echo "test_output<<EOF" >> $GITHUB_OUTPUT
+          cat test_results.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Comment PR with test results
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🧪 Test Results\n\n\`\`\`\n${{ steps.test_report.outputs.test_output }}\n\`\`\``
+            })
+
+# ============================================================
+# 예제 3: 의존성 자동 업데이트
+# ============================================================
+
+---
+name: Dependency Update
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # 매주 일요일 자정 (UTC)
+  workflow_dispatch:
+
+jobs:
+  update-dependencies:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Update dependencies
+        run: |
+          uv lock --upgrade
+          uv sync
+
+      - name: Run tests
+        run: uv run pytest
+        continue-on-error: true
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: update dependencies'
+          title: 'chore: Weekly dependency update'
+          body: |
+            ## Dependency Update
+
+            This PR updates all dependencies to their latest versions.
+
+            Please review the changes and ensure all tests pass.
+          branch: dependency-update
+          labels: dependencies, automated
